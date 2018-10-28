@@ -35,7 +35,7 @@ def p_train(make_obs_ph_n, act_space_n, p_index, p_func, q_func, optimizer, grad
         act_ph_n = [act_pdtype_n[i].sample_placeholder([None], name="action"+str(i)) for i in range(len(act_space_n))]
 
         p_input = obs_ph_n[p_index]
-
+        print("LLLOLOLOLOLOLOLOLLLLLLLLLLLLL MAX",act_pdtype_n[p_index].param_shape()[0])
         p = p_func(p_input, int(act_pdtype_n[p_index].param_shape()[0]), scope="p_func", num_units=num_units)
         p_func_vars = U.scope_vars(U.absolute_scope_name("p_func"))
 
@@ -179,7 +179,7 @@ class MADDPGAgentTrainer(AgentTrainer):
 
         # train q network
         num_sample = 1
-        target_q = 0.0
+        target_q = 0.0se
         for i in range(num_sample):
             target_act_next_n = [agents[i].p_debug['target_act'](obs_next_n[i]) for i in range(self.n)]
             target_q_next = self.q_debug['target_q_values'](*(obs_next_n + target_act_next_n))

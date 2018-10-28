@@ -9,6 +9,10 @@ from maddpg.trainer.maddpg import MADDPGAgentTrainer
 import tensorflow.contrib.layers as layers
 import snakeoil3_gym as snakeoil3
 
+def sigmoid(z):
+    s = 1.0 / (1.0 + np.exp(-1.0 * z))
+    return s
+
 def parse_args():
     parser = argparse.ArgumentParser("Reinforcement Learning experiments for multiagent environments")
     # Environment
@@ -21,9 +25,9 @@ def parse_args():
     parser.add_argument("--adv-policy", type=str, default="maddpg", help="policy of adversaries")
     parser.add_argument("--early-stop", type=int, default= 0 , help="early stop value")
     # Core training parameters
-    parser.add_argument("--lr", type=float, default=1e-3, help="learning rate for Adam optimizer")
+    parser.add_argument("--lr", type=float, default=1e-4, help="learning rate for Adam optimizer")
     parser.add_argument("--gamma", type=float, default=0.99, help="discount factor")
-    parser.add_argument("--batch-size", type=int, default=4, help="number of episodes to optimize at the same time")
+    parser.add_argument("--batch-size", type=int, default=32, help="number of episodes to optimize at the same time")
     parser.add_argument("--num-units", type=int, default=350, help="number of units in the mlp")
     # Checkpointing
     parser.add_argument("--exp-name", type=str, default=None, help="name of the experiment")
@@ -39,12 +43,20 @@ def parse_args():
     parser.add_argument("--plots-dir", type=str, default="./learning_curves/", help="directory where plot data is saved")
     return parser.parse_args()
 
-def mlp_model(input, num_outputs, scope, reuse=False, num_units=64, rnn_cell=None):
+def mlp_model(input, num_outputs, scope, reuse=False, num_units=350, rnn_cell=None):
     # This model takes as input an observation and returns values of all actions
     with tf.variable_scope(scope, reuse=reuse):
-        out = input
-        out = layers.fully_connected(out, num_outputs=num_units, activation_fn=tf.nn.relu)
-        out = layers.fully_connected(out, num_outputs=num_units, activation_fn=tf.nn.relu)
+        out = input            
+        out = layers.fully_connected(out, num_outputs=num_units-50, activation_fn=tf.nn.relu)
+        out = layers.fully_connected(out, num_outputs=num_units+50, activation_fn=tf.nn.relu)
+        
+        # steer = tf.tanh(tf.matmul(out,W_steer) + b_steer)
+        # accel = tf.sigmoid(tf.matmul(out,W_accel) + b_accel)
+        # brake = tf.sigmoid(tf.matmul(out,W_brake) + b_brake)
+        
+        # action_output = tf.concat(1, [steer, accel, brake])
+        # action_output = tf.concat([steer, accel, brake], 1)
+
         out = layers.fully_connected(out, num_outputs=num_outputs, activation_fn=None)
         return out
 
@@ -120,17 +132,23 @@ def train(arglist):
         episode_step = 0
         train_step = 0
         t_start = time.time()
-        is_training = 0
+        is_training = 1
         print('Starting iterations...')
         episode_no=0
         while True:
-
+            actions_n = []
             relaunch=True
             # get action
             action_n = [agent.action(obs) for agent, obs in zip(trainers,obs_n)]
+            for action in action_n:
+                action[0] = np.tanh(action[0])
+                action[1] = sigmoid(action[1])
+                action[2] = sigmoid(action[2])
+                actions_n.append(action)
             # environment step
-            new_obs_n, rew_n, done_n, info_n = env.step_torcs(episode_step,clients,action_n,arglist.early_stop)
-            print('Step Reward:',rew_n)
+            new_obs_n, rew_n, done_n, info_n = env.step_torcs(episode_step,clients,actions_n,arglist.early_stop)
+            print('Action:',actions_n)
+            
             episode_step += 1
             done = any(done_n)
             terminal = (episode_step >= arglist.max_episode_len)
@@ -148,10 +166,10 @@ def train(arglist):
 
             if done or terminal:
                 episode_no+=1
-                if episode_no%15==0:
+                if episode_no%30==0:
                     is_training=0
                 obs_n, clients = env.reset_multi(clients,is_training,relaunch)
-                is_training=0
+                is_training=1
                 relaunch = True
                 episode_step = 0
                 episode_rewards.append(0)

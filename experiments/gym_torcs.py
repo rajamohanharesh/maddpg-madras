@@ -31,6 +31,8 @@ class TorcsEnv:
         self.time_step = 0
         self.worker_threads = []
         self.currState = None 
+        self.lock = threading.RLock()
+        self.reset_lock = threading.RLock()
         self.queue = queue.Queue()
         self.reset_queue = queue.Queue()
         self.n = num_agents
@@ -100,6 +102,7 @@ class TorcsEnv:
     def step_torcs(self, step, clients, actions, early_stop):
     	with self.queue.mutex:
     		self.queue.queue.clear()
+            
     	worker_threads = []
     	
     	obs_n = []
@@ -130,7 +133,8 @@ class TorcsEnv:
     
     def step(self, step, client, u, early_stop):
         # client = self.client
-
+        lock = threading.RLock()
+        lock.acquire()
         this_action = self.agent_to_torcs(u)
         info = {'termination_cause':0}
         # Apply Action
@@ -286,12 +290,16 @@ class TorcsEnv:
         ob = self.observation
         obs = np.hstack((ob.angle, ob.track, ob.trackPos, ob.speedX, ob.speedY,  ob.speedZ, ob.wheelSpinVel/100.0, ob.rpm))
         self.queue.put([obs,reward, client.R.d['meta'], info])
+        lock.release()
+
         return self.observation, reward, client.R.d['meta'], info
         # return reward
 
     def reset(self, client,is_training, relaunch=False):
         #print("Reset")
-
+        
+        reset_lock = threading.RLock()
+        reset_lock.acquire()
         port = client.port
         self.time_step = 0
         self.n_collision = 0
@@ -323,6 +331,7 @@ class TorcsEnv:
 
         self.initial_reset = False
         self.reset_queue.put([self.currState, client])
+        reset_lock.release()
         return self.get_obs(), client
 
     def end(self):

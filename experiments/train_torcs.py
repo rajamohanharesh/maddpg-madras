@@ -25,9 +25,9 @@ def parse_args():
     parser.add_argument("--adv-policy", type=str, default="maddpg", help="policy of adversaries")
     parser.add_argument("--early-stop", type=int, default= 0 , help="early stop value")
     # Core training parameters
-    parser.add_argument("--lr", type=float, default=1e-4, help="learning rate for Adam optimizer")
+    parser.add_argument("--lr", type=float, default=1e-3, help="learning rate for Adam optimizer")
     parser.add_argument("--gamma", type=float, default=0.99, help="discount factor")
-    parser.add_argument("--batch-size", type=int, default=32, help="number of episodes to optimize at the same time")
+    parser.add_argument("--batch-size", type=int, default=16, help="number of episodes to optimize at the same time")
     parser.add_argument("--num-units", type=int, default=350, help="number of units in the mlp")
     # Checkpointing
     parser.add_argument("--exp-name", type=str, default=None, help="name of the experiment")
@@ -141,9 +141,9 @@ def train(arglist):
             # get action
             action_n = [agent.action(obs) for agent, obs in zip(trainers,obs_n)]
             for action in action_n:
-                action[0] = np.tanh(action[0])
-                action[1] = sigmoid(action[1])
-                action[2] = sigmoid(action[2])
+                action[0] = np.clip(action[0],-1,1)
+                action[1] = np.clip(action[1],0,1)
+                action[2] = np.clip(action[2],0,1)
                 actions_n.append(action)
             # environment step
             new_obs_n, rew_n, done_n, info_n = env.step_torcs(episode_step,clients,actions_n,arglist.early_stop)

@@ -186,7 +186,7 @@ class Client(object):
                         os.system(u'torcs -r ~/.torcs/config/raceman/quickrace.xml -nofuel -nolaptime -vision &')
 
                     time.sleep(1.0)
-                    os.system(u'sh scripts/autostart.sh')
+                    # os.system(u'sh scripts/autostart.sh')
                     # n_fail = 3
                 n_fail -= 1
 

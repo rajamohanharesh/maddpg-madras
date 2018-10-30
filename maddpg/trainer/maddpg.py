@@ -4,6 +4,7 @@ import tensorflow as tf
 import maddpg.common.tf_util as U
 
 from maddpg.common.distributions import make_pdtype
+from maddpg.common.OU import OU
 from maddpg import AgentTrainer
 from maddpg.trainer.replay_buffer import ReplayBuffer
 
@@ -36,24 +37,27 @@ def p_train(make_obs_ph_n, act_space_n, p_index, p_func, q_func, optimizer, grad
 
         p_input = obs_ph_n[p_index]
 
-        p = p_func(p_input, int(act_pdtype_n[p_index].param_shape()[0]), scope="p_func", num_units=num_units)
+        # p = p_func(p_input, int(act_pdtype_n[p_index].param_shape()[0]), scope="p_func", num_units=num_units)
+        p = p_func(p_input, scope="p_func", num_units=num_units)
         p_func_vars = U.scope_vars(U.absolute_scope_name("p_func"))
 
         # wrap parameters in distribution
-        act_pd = act_pdtype_n[p_index].pdfromflat(p)
+        # act_pd = act_pdtype_n[p_index].pdfromflat(p)
 
-        act_sample = act_pd.sample()
-        p_reg = tf.reduce_mean(tf.square(act_pd.flatparam()))
+        act_sample = p
+        # act_sample = act_pd.sample()
+        # p_reg = tf.reduce_mean(tf.square(act_pd.flatparam()))
 
         act_input_n = act_ph_n + []
-        act_input_n[p_index] = act_pd.sample()
+        act_input_n[p_index] = p
         q_input = tf.concat(obs_ph_n + act_input_n, 1)
         if local_q_func:
             q_input = tf.concat([obs_ph_n[p_index], act_input_n[p_index]], 1)
         q = q_func(q_input, 1, scope="q_func", reuse=True, num_units=num_units)[:,0]
         pg_loss = -tf.reduce_mean(q)
 
-        loss = pg_loss + p_reg * 1e-3
+        loss = pg_loss
+        # loss = pg_loss + p_reg * 1e-3
 
         optimize_expr = U.minimize_and_clip(optimizer, loss, p_func_vars, grad_norm_clipping)
 
@@ -63,11 +67,13 @@ def p_train(make_obs_ph_n, act_space_n, p_index, p_func, q_func, optimizer, grad
         p_values = U.function([obs_ph_n[p_index]], p)
 
         # target network
-        target_p = p_func(p_input, int(act_pdtype_n[p_index].param_shape()[0]), scope="target_p_func", num_units=num_units)
+        target_p = p_func(p_input, scope="target_p_func", num_units=num_units)
+        # target_p = p_func(p_input, int(act_pdtype_n[p_index].param_shape()[0]), scope="target_p_func", num_units=num_units)
         target_p_func_vars = U.scope_vars(U.absolute_scope_name("target_p_func"))
         update_target_p = make_update_exp(p_func_vars, target_p_func_vars)
 
-        target_act_sample = act_pdtype_n[p_index].pdfromflat(target_p).sample()
+        # target_act_sample = act_pdtype_n[p_index].pdfromflat(target_p).sample()
+        target_act_sample = target_p
         target_act = U.function(inputs=[obs_ph_n[p_index]], outputs=target_act_sample)
 
         return act, train, update_target_p, {'p_values': p_values, 'target_act': target_act}
@@ -110,11 +116,12 @@ def q_train(make_obs_ph_n, act_space_n, q_index, q_func, optimizer, grad_norm_cl
         return train, update_target_q, {'q_values': q_values, 'target_q_values': target_q_values}
 
 class MADDPGAgentTrainer(AgentTrainer):
-    def __init__(self, name, model, obs_shape_n, act_space_n, agent_index, args, local_q_func=False):
+    def __init__(self, name,p_model, model, obs_shape_n, act_space_n, agent_index, args, local_q_func=False):
         self.name = name
         self.n = len(obs_shape_n)
         self.agent_index = agent_index
         self.args = args
+        self.OU = OU()
         obs_ph_n = []
         for i in range(self.n):
             obs_ph_n.append(U.BatchInput(obs_shape_n[i], name="observation"+str(i)).get())
@@ -136,7 +143,7 @@ class MADDPGAgentTrainer(AgentTrainer):
             make_obs_ph_n=obs_ph_n,
             act_space_n=act_space_n,
             p_index=agent_index,
-            p_func=model,
+            p_func=p_model,
             q_func=model,
             optimizer=tf.train.AdamOptimizer(learning_rate=args.lr),
             grad_norm_clipping=0.5,
@@ -150,6 +157,26 @@ class MADDPGAgentTrainer(AgentTrainer):
 
     def action(self, obs):
         return self.act(obs[None])[0]
+    
+    def noise_action(self, obs,epsilon):
+        action = self.act(obs[None])[0]
+        
+        noise_t = np.zeros(action.shape[0])
+        noise_t[0] = epsilon * self.OU.function(action[0],  0.0 , 0.60, 0.80)
+        noise_t[1] = epsilon * self.OU.function(action[1],  0.5 , 1.00, 0.10)
+        noise_t[2] = epsilon * self.OU.function(action[2], -0.1 , 1.00, 0.05)
+        
+        if random.random() <= 0.10:
+            print("********Stochastic brake***********")
+            noise_t[2] = epsilon * self.OU.function(action[2],  0.2 , 1.00, 0.10)
+
+        action = action + noise_t
+        action[0] = np.clip(action[0], -1, 1)
+        action[1] = np.clip(action[1], 0 , 1)
+        action[2] = np.clip(action[2], 0 , 1)
+        
+        # print "Action_Noise:", action
+        return action
 
     def experience(self, obs, act, rew, new_obs, done, terminal):
         # Store transition in the replay buffer.

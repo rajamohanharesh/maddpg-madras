@@ -9,10 +9,6 @@ from maddpg.trainer.maddpg import MADDPGAgentTrainer
 import tensorflow.contrib.layers as layers
 import snakeoil3_gym as snakeoil3
 
-def sigmoid(z):
-    s = 1.0 / (1.0 + np.exp(-1.0 * z))
-    return s
-
 def parse_args():
     parser = argparse.ArgumentParser("Reinforcement Learning experiments for multiagent environments")
     # Environment
@@ -49,16 +45,35 @@ def mlp_model(input, num_outputs, scope, reuse=False, num_units=350, rnn_cell=No
         out = input            
         out = layers.fully_connected(out, num_outputs=num_units-50, activation_fn=tf.nn.relu)
         out = layers.fully_connected(out, num_outputs=num_units+50, activation_fn=tf.nn.relu)
-        
-        # steer = tf.tanh(tf.matmul(out,W_steer) + b_steer)
-        # accel = tf.sigmoid(tf.matmul(out,W_accel) + b_accel)
-        # brake = tf.sigmoid(tf.matmul(out,W_brake) + b_brake)
-        
-        # action_output = tf.concat(1, [steer, accel, brake])
-        # action_output = tf.concat([steer, accel, brake], 1)
-
         out = layers.fully_connected(out, num_outputs=num_outputs, activation_fn=None)
         return out
+
+def mlp_actor_model(input, scope, reuse=False, num_units=350, rnn_cell=None):
+    # This model takes as input an observation and returns values of all actions
+    with tf.variable_scope(scope, reuse=reuse):
+        layer2_size = num_units+50
+        out = input            
+        out = layers.fully_connected(out, num_outputs=num_units-50, activation_fn=tf.nn.relu)
+        out = layers.fully_connected(out, num_outputs=layer2_size, activation_fn=tf.nn.relu)
+        
+        W_steer = tf.Variable(tf.random_uniform([layer2_size,1],-1e-4,1e-4))
+        b_steer = tf.Variable(tf.random_uniform([1],-1e-4,1e-4))
+
+        W_accel = tf.Variable(tf.random_uniform([layer2_size,1],-1e-4,1e-4))
+        b_accel = tf.Variable(tf.random_uniform([1],-1e-4,1e-4))
+
+        W_brake = tf.Variable(tf.random_uniform([layer2_size,1],-1e-4,1e-4))
+        b_brake = tf.Variable(tf.random_uniform([1],-1e-4,1e-4))
+
+        steer = tf.tanh(tf.matmul(out,W_steer) + b_steer)
+        accel = tf.sigmoid(tf.matmul(out,W_accel) + b_accel)
+        brake = tf.sigmoid(tf.matmul(out,W_brake) + b_brake)
+        
+        action_output = tf.concat(1, [steer, accel, brake])
+        action_output = tf.concat([steer, accel, brake], 1)
+
+        # out = layers.fully_connected(out, num_outputs=num_outputs, activation_fn=None)
+        return action_output
 
 def make_env(scenario_name, arglist, benchmark=False):
     from gym_torcs import TorcsEnv
@@ -69,14 +84,15 @@ def make_env(scenario_name, arglist, benchmark=False):
 def get_trainers(env, num_adversaries, obs_shape_n, arglist):
     trainers = []
     model = mlp_model
+    p_model = mlp_actor_model
     trainer = MADDPGAgentTrainer
     for i in range(num_adversaries):
         trainers.append(trainer(
-            "agent_%d" % i, model, obs_shape_n, env.action_space, i, arglist,
+            "agent_%d" % i, p_model,model, obs_shape_n, env.action_space, i, arglist,
             local_q_func=(arglist.adv_policy=='ddpg')))
     for i in range(num_adversaries, env.n):
         trainers.append(trainer(
-            "agent_%d" % i, model, obs_shape_n, env.action_space, i, arglist,
+            "agent_%d" % i,p_model, model, obs_shape_n, env.action_space, i, arglist,
             local_q_func=(arglist.good_policy=='ddpg')))
     return trainers
 
@@ -135,16 +151,27 @@ def train(arglist):
         is_training = 1
         print('Starting iterations...')
         episode_no=0
+
+        epsilon = 0.5
+        epsilon_decay = 600000.0
+        epsilon_steady_state = 0.01
+        
         while True:
             actions_n = []
             relaunch=True
             # get action
-            action_n = [agent.action(obs) for agent, obs in zip(trainers,obs_n)]
-            for action in action_n:
-                action[0] = np.clip(action[0],-1,1)
-                action[1] = np.clip(action[1],0,1)
-                action[2] = np.clip(action[2],0,1)
-                actions_n.append(action)
+            # action_n = [agent.action(obs) for agent, obs in zip(trainers,obs_n)]
+            # for action in action_n:
+            #     action[0] = np.clip(action[0],-1,1)
+            #     action[1] = np.clip(action[1],0,1)
+            #     action[2] = np.clip(action[2],0,1)
+            #     actions_n.append(action)
+
+            actions_n = [agent.noise_action(obs,epsilon) for agent, obs in zip(trainers,obs_n)] 
+            
+            epsilon-=1/epsilon
+
+            epsilon = max(epsilon,epsilon_steady_state)
             # environment step
             new_obs_n, rew_n, done_n, info_n = env.step_torcs(episode_step,clients,actions_n,arglist.early_stop)
             print('Action:',actions_n)
@@ -156,6 +183,7 @@ def train(arglist):
             for info in info_n:
                 if info['termination_cause']=='hardReset':
                     relaunch = False 
+            
             if relaunch:
                 for i, agent in enumerate(trainers):
                     agent.experience(obs_n[i], action_n[i], rew_n[i], new_obs_n[i], done_n[i], terminal)

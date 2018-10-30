@@ -28,7 +28,7 @@ def parse_args():
     # Checkpointing
     parser.add_argument("--exp-name", type=str, default=None, help="name of the experiment")
     parser.add_argument("--save-dir", type=str, default="policy/", help="directory in which training state and model should be saved")
-    parser.add_argument("--save-rate", type=int, default=30, help="save model once every time this many episodes are completed")
+    parser.add_argument("--save-rate", type=int, default=2, help="save model once every time this many episodes are completed")
     parser.add_argument("--load-dir", type=str, default="", help="directory in which training state and model are loaded")
     # Evaluation
     parser.add_argument("--restore", action="store_true", default=False)
@@ -244,7 +244,8 @@ def train(arglist):
                 loss = agent.update(trainers, train_step)
 
             # save model, display training output
-            if terminal and (len(episode_rewards) % arglist.save_rate == 0):
+            # change the save rate here
+            if done and (episode_no % 2 == 0):
                 U.save_state(fname=arglist.save_dir, saver=saver,time_step=episode_no)
                 # print statement depends on whether or not there are adversaries
                 if num_adversaries == 0:
@@ -257,8 +258,12 @@ def train(arglist):
                 t_start = time.time()
                 # Keep track of final episode reward
                 final_ep_rewards.append(np.mean(episode_rewards[-arglist.save_rate:]))
+                #print('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaAAAAAAaAaAA')
                 for rew in agent_rewards:
                     final_ep_ag_rewards.append(np.mean(rew[-arglist.save_rate:]))
+            #elif done:
+            #	print('episode_no',episode_no)
+            #	print('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBb')
 
             # saves final episode reward for plotting training curve later
             if len(episode_rewards) > arglist.num_episodes:

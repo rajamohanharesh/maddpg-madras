@@ -166,9 +166,9 @@ class MADDPGAgentTrainer(AgentTrainer):
         noise_t[1] = epsilon * self.OU.function(action[1],  0.5 , 1.00, 0.10)
         noise_t[2] = epsilon * self.OU.function(action[2], -0.1 , 1.00, 0.05)
         
-        if random.random() <= 0.10:
-            print("********Stochastic brake***********")
-            noise_t[2] = epsilon * self.OU.function(action[2],  0.2 , 1.00, 0.10)
+        # if random.random() <= 0.10:
+        #     print("********Stochastic brake***********")
+        #     noise_t[2] = epsilon * self.OU.function(action[2],  0.2 , 1.00, 0.10)
 
         action = action + noise_t
         action[0] = np.clip(action[0], -1, 1)

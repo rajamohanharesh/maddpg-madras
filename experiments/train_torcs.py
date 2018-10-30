@@ -69,7 +69,7 @@ def mlp_actor_model(input, scope, reuse=False, num_units=350, rnn_cell=None):
         accel = tf.sigmoid(tf.matmul(out,W_accel) + b_accel)
         brake = tf.sigmoid(tf.matmul(out,W_brake) + b_brake)
         
-        action_output = tf.concat(1, [steer, accel, brake])
+        # action_output = tf.concat(1, [steer, accel, brake])
         action_output = tf.concat([steer, accel, brake], 1)
 
         # out = layers.fully_connected(out, num_outputs=num_outputs, activation_fn=None)
@@ -155,7 +155,7 @@ def train(arglist):
         epsilon = 0.5
         epsilon_decay = 600000.0
         epsilon_steady_state = 0.01
-        
+
         while True:
             actions_n = []
             relaunch=True
@@ -186,7 +186,7 @@ def train(arglist):
             
             if relaunch:
                 for i, agent in enumerate(trainers):
-                    agent.experience(obs_n[i], action_n[i], rew_n[i], new_obs_n[i], done_n[i], terminal)
+                    agent.experience(obs_n[i], actions_n[i], rew_n[i], new_obs_n[i], done_n[i], terminal)
                 for i, rew in enumerate(rew_n):
                     episode_rewards[-1] += rew
                     agent_rewards[i][-1] += rew

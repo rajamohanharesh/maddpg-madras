@@ -8,7 +8,7 @@ import maddpg.common.tf_util as U
 from maddpg.trainer.maddpg import MADDPGAgentTrainer
 import tensorflow.contrib.layers as layers
 import snakeoil3_gym as snakeoil3
-train_indicator=1
+train_indicator=0
 def parse_args():
     parser = argparse.ArgumentParser("Reinforcement Learning experiments for multiagent environments")
     # Environment
@@ -31,7 +31,7 @@ def parse_args():
     parser.add_argument("--save-rate", type=int, default=2, help="save model once every time this many episodes are completed")
     parser.add_argument("--load-dir", type=str, default="policy/", help="directory in which training state and model are loaded")
     # Evaluation
-    parser.add_argument("--restore", action="store_true", default=False)
+    parser.add_argument("--restore", action="store_true", default=True)
     parser.add_argument("--display", action="store_true", default=False)
     parser.add_argument("--benchmark", action="store_true", default=False)
     parser.add_argument("--benchmark-iters", type=int, default=100000, help="number of iterations run for benchmarking")
@@ -179,7 +179,7 @@ def train(arglist):
             if train_indicator:
             	actions_n = [agent.noise_action(obs,epsilon) for agent, obs in zip(trainers,obs_n)] 
             else:
-            	actions_n = [agent.action(obs,epsilon) for agent, obs in zip(trainers,obs_n)]             	
+            	actions_n = [agent.action(obs) for agent, obs in zip(trainers,obs_n)]             	
             #if episode_step<100:
             #	actions_n[1]=np.array([0,0,0])
             # actions_n = [default_action for obs in obs_n]
@@ -266,7 +266,7 @@ def train(arglist):
 	                t_start = time.time()
 	                # Keep track of final episode reward
 	                final_ep_rewards.append(np.mean(episode_rewards[-arglist.save_rate:]))
-	                best_reward=episode_rewards[-1]
+	                best_reward=episode_rewards[-2]
 	                #print('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaAAAAAAaAaAA')
 	                for rew in agent_rewards:
 	                    final_ep_ag_rewards.append(np.mean(rew[-arglist.save_rate:]))

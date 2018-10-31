@@ -40,6 +40,7 @@ def p_train(make_obs_ph_n, act_space_n, p_index, p_func, q_func, optimizer, grad
         # p = p_func(p_input, int(act_pdtype_n[p_index].param_shape()[0]), scope="p_func", num_units=num_units)
         p = p_func(p_input, scope="p_func", num_units=num_units)
         p_func_vars = U.scope_vars(U.absolute_scope_name("p_func"))
+        print("Updated vars",p_func_vars)
 
         # wrap parameters in distribution
         # act_pd = act_pdtype_n[p_index].pdfromflat(p)
@@ -175,7 +176,7 @@ class MADDPGAgentTrainer(AgentTrainer):
         action[1] = np.clip(action[1], 0 , 1)
         action[2] = np.clip(action[2], 0 , 1)
         
-        # print "Action_Noise:", action
+        print("Action_Noise:", noise_t)
         return action
 
     def experience(self, obs, act, rew, new_obs, done, terminal):
@@ -188,9 +189,9 @@ class MADDPGAgentTrainer(AgentTrainer):
     def update(self, agents, t):
         if len(self.replay_buffer) < self.max_replay_buffer_len: # replay buffer is not large enough
             return
-        if not t % 100 == 0:  # only update every 100 steps
-            return
-
+        # if not t % 100 == 0:  # only update every 100 steps
+        #     return
+        print("Update timestep",t)
         self.replay_sample_index = self.replay_buffer.make_index(self.args.batch_size)
         # collect replay sample from all agents
         obs_n = []

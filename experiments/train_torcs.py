@@ -23,7 +23,7 @@ def parse_args():
     # Core training parameters
     parser.add_argument("--lr", type=float, default=1e-3, help="learning rate for Adam optimizer")
     parser.add_argument("--gamma", type=float, default=0.99, help="discount factor")
-    parser.add_argument("--batch-size", type=int, default=16, help="number of episodes to optimize at the same time")
+    parser.add_argument("--batch-size", type=int, default=32, help="number of episodes to optimize at the same time")
     parser.add_argument("--num-units", type=int, default=350, help="number of units in the mlp")
     # Checkpointing
     parser.add_argument("--exp-name", type=str, default=None, help="name of the experiment")
@@ -52,18 +52,27 @@ def mlp_actor_model(input, scope, reuse=False, num_units=350, rnn_cell=None):
     # This model takes as input an observation and returns values of all actions
     with tf.variable_scope(scope, reuse=reuse):
         layer2_size = num_units+50
+        initializer = tf.random_uniform_initializer(-1e-4,1e-4)
         out = input            
         out = layers.fully_connected(out, num_outputs=num_units-50, activation_fn=tf.nn.relu)
         out = layers.fully_connected(out, num_outputs=layer2_size, activation_fn=tf.nn.relu)
         
-        W_steer = tf.Variable(tf.random_uniform([layer2_size,1],-1e-4,1e-4))
-        b_steer = tf.Variable(tf.random_uniform([1],-1e-4,1e-4))
+        # W_steer = tf.Variable(tf.random_uniform([layer2_size,1],-1e-4,1e-4))
+        W_steer = tf.get_variable("W_steer",shape=[layer2_size,1],initializer=initializer)
+        b_steer = tf.get_variable("b_steer",shape=[1],initializer=initializer)
+        # b_steer = tf.Variable(tf.random_uniform([1],-1e-4,1e-4))
 
-        W_accel = tf.Variable(tf.random_uniform([layer2_size,1],-1e-4,1e-4))
-        b_accel = tf.Variable(tf.random_uniform([1],-1e-4,1e-4))
+        # W_accel = tf.Variable(tf.random_uniform([layer2_size,1],-1e-4,1e-4))
+        # b_accel = tf.Variable(tf.random_uniform([1],-1e-4,1e-4))
+        W_accel = tf.get_variable("W_accel",shape=[layer2_size,1],initializer=initializer)
+        b_accel = tf.get_variable("b_accel",shape=[1],initializer=initializer)
 
-        W_brake = tf.Variable(tf.random_uniform([layer2_size,1],-1e-4,1e-4))
-        b_brake = tf.Variable(tf.random_uniform([1],-1e-4,1e-4))
+
+        # W_brake = tf.Variable(tf.random_uniform([layer2_size,1],-1e-4,1e-4))
+        # b_brake = tf.Variable(tf.random_uniform([1],-1e-4,1e-4))
+
+        W_brake = tf.get_variable("W_brake",shape=[layer2_size,1],initializer=initializer)
+        b_brake = tf.get_variable("b_brake",shape=[1],initializer=initializer)
 
         steer = tf.tanh(tf.matmul(out,W_steer) + b_steer)
         accel = tf.sigmoid(tf.matmul(out,W_accel) + b_accel)
@@ -71,14 +80,14 @@ def mlp_actor_model(input, scope, reuse=False, num_units=350, rnn_cell=None):
         
         # action_output = tf.concat(1, [steer, accel, brake])
         action_output = tf.concat([steer, accel, brake], 1)
-
+        print("W,b",W_brake,b_brake)
         # out = layers.fully_connected(out, num_outputs=num_outputs, activation_fn=None)
         return action_output
 
 def make_env(scenario_name, arglist, benchmark=False):
     from gym_torcs import TorcsEnv
 
-    env = TorcsEnv(vision=False, throttle=True, gear_change=False,num_agents =2)
+    env = TorcsEnv(vision=False, throttle=True, gear_change=False,num_agents =1)
     return env
 
 def get_trainers(env, num_adversaries, obs_shape_n, arglist):
@@ -157,7 +166,7 @@ def train(arglist):
         epsilon_steady_state = 0.01
 
         while True:
-            actions_n = []
+            # actions_n = []
             relaunch=True
             # get action
             # action_n = [agent.action(obs) for agent, obs in zip(trainers,obs_n)]
@@ -166,16 +175,17 @@ def train(arglist):
             #     action[1] = np.clip(action[1],0,1)
             #     action[2] = np.clip(action[2],0,1)
             #     actions_n.append(action)
-
+            # default_action = np.array([0.,0.8,0.1])
             actions_n = [agent.noise_action(obs,epsilon) for agent, obs in zip(trainers,obs_n)] 
-            
-            epsilon-=1/epsilon
+            # actions_n = [default_action for obs in obs_n]
+            epsilon-=1/epsilon_decay
 
             epsilon = max(epsilon,epsilon_steady_state)
+
+            print(epsilon)
             # environment step
             new_obs_n, rew_n, done_n, info_n = env.step_torcs(episode_step,clients,actions_n,arglist.early_stop)
             print('Action:',actions_n)
-            
             episode_step += 1
             done = any(done_n)
             terminal = (episode_step >= arglist.max_episode_len)

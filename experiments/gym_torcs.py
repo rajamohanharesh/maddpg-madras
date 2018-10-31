@@ -287,9 +287,9 @@ class TorcsEnv:
             client.respond_to_server()
 
         self.time_step += 1
-        ob = self.observation
-        obs = np.hstack((ob.angle, ob.track, ob.trackPos, ob.speedX, ob.speedY,  ob.speedZ, ob.wheelSpinVel/100.0, ob.rpm))
-        self.queue.put([obs,reward, client.R.d['meta'], info])
+        # ob = self.observation
+        # obs = np.hstack((ob.angle, ob.track, ob.trackPos, ob.speedX, ob.speedY,  ob.speedZ, ob.wheelSpinVel/100.0, ob.rpm))
+        self.queue.put([self.currState,reward, client.R.d['meta'], info])
         # lock.release()
 
         return self.observation, reward, client.R.d['meta'], info

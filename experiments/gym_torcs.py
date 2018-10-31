@@ -243,13 +243,13 @@ class TorcsEnv:
 
         # # Penalising if too near an opponent 
 
-        if (dist_MM<10 and dist_MM>0) or (dist_LL<0.5 and dist_LL>0) or (dist_RR<0.5 and dist_RR>0) or \
+        if (dist_MM<8 and dist_MM>0) or (dist_LL<0.5 and dist_LL>0) or (dist_RR<0.5 and dist_RR>0) or \
             (dist_L<5 and dist_L>0) or (dist_R<5 and dist_R>0) or \
             (dist_L_rear<10 and dist_L_rear>0) or (dist_R_rear<10 and dist_R_rear>0):
             print('***Proximity***')
-            reward = -200 
+            reward = -100 
             if obs['damage'] - obs_pre['damage'] > 0:
-                reward = -400
+                reward = -100
                 self.n_collision = self.n_collision + 1
                 print('***collision***')
 
@@ -258,7 +258,7 @@ class TorcsEnv:
         # Termination judgement #########################
         episode_terminate = False
         if ( (abs(track.any()) > 1 or abs(trackPos) > 1)):  # Episode is terminated if the car is out of track
-            reward = -200
+            reward = -400
             episode_terminate = True
             client.R.d['meta'] = True
             info['termination_cause'] = 1
@@ -275,7 +275,7 @@ class TorcsEnv:
                 print('Terminating because Small Progress')
         """
         if np.cos(obs['angle']) < 0: # Episode is terminated if the agent runs backward
-            reward=-300
+            reward=-400
             episode_terminate = True
             client.R.d['meta'] = True
             info['termination_cause'] = 3

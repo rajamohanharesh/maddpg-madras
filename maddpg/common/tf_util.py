@@ -227,7 +227,13 @@ def load_state(fname, saver=None):
     """Load all the variables to the current session from the location <fname>"""
     if saver is None:
         saver = tf.train.Saver()
-    saver.restore(get_session(), fname)
+    checkpoint = tf.train.get_checkpoint_state(fname)
+    if checkpoint and checkpoint.model_checkpoint_path:
+        saver.restore(get_session(), checkpoint.model_checkpoint_path)
+        print("Successfully loaded:", checkpoint.model_checkpoint_path)
+    else:
+        print("Could not find old network weights")
+    #saver.restore(get_session(), fname)
     return saver
 
 

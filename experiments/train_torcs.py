@@ -8,7 +8,7 @@ import maddpg.common.tf_util as U
 from maddpg.trainer.maddpg import MADDPGAgentTrainer
 import tensorflow.contrib.layers as layers
 import snakeoil3_gym as snakeoil3
-
+train_indicator=1
 def parse_args():
     parser = argparse.ArgumentParser("Reinforcement Learning experiments for multiagent environments")
     # Environment
@@ -29,7 +29,7 @@ def parse_args():
     parser.add_argument("--exp-name", type=str, default=None, help="name of the experiment")
     parser.add_argument("--save-dir", type=str, default="policy/", help="directory in which training state and model should be saved")
     parser.add_argument("--save-rate", type=int, default=2, help="save model once every time this many episodes are completed")
-    parser.add_argument("--load-dir", type=str, default="", help="directory in which training state and model are loaded")
+    parser.add_argument("--load-dir", type=str, default="policy/", help="directory in which training state and model are loaded")
     # Evaluation
     parser.add_argument("--restore", action="store_true", default=False)
     parser.add_argument("--display", action="store_true", default=False)
@@ -87,7 +87,7 @@ def mlp_actor_model(input, scope, reuse=False, num_units=350, rnn_cell=None):
 def make_env(scenario_name, arglist, benchmark=False):
     from gym_torcs import TorcsEnv
 
-    env = TorcsEnv(vision=False, throttle=True, gear_change=False,num_agents =1)
+    env = TorcsEnv(vision=False, throttle=True, gear_change=False,num_agents =2)
     return env
 
 def get_trainers(env, num_adversaries, obs_shape_n, arglist):
@@ -157,10 +157,10 @@ def train(arglist):
         episode_step = 0
         train_step = 0
         t_start = time.time()
-        is_training = 1
+        is_training = train_indicator
         print('Starting iterations...')
         episode_no=0
-
+        best_reward=-10000000
         epsilon = 0.5
         epsilon_decay = 600000.0
         epsilon_steady_state = 0.01
@@ -176,13 +176,19 @@ def train(arglist):
             #     action[2] = np.clip(action[2],0,1)
             #     actions_n.append(action)
             # default_action = np.array([0.,0.8,0.1])
-            actions_n = [agent.noise_action(obs,epsilon) for agent, obs in zip(trainers,obs_n)] 
+            if train_indicator:
+            	actions_n = [agent.noise_action(obs,epsilon) for agent, obs in zip(trainers,obs_n)] 
+            else:
+            	actions_n = [agent.action(obs,epsilon) for agent, obs in zip(trainers,obs_n)]             	
+            #if episode_step<100:
+            #	actions_n[1]=np.array([0,0,0])
             # actions_n = [default_action for obs in obs_n]
-            epsilon-=1/epsilon_decay
+            if train_indicator:
+	            epsilon-=1/epsilon_decay
 
-            epsilon = max(epsilon,epsilon_steady_state)
+	            epsilon = max(epsilon,epsilon_steady_state)
 
-            print(epsilon)
+	            print(epsilon)
             # environment step
             new_obs_n, rew_n, done_n, info_n = env.step_torcs(episode_step,clients,actions_n,arglist.early_stop)
             print('Action:',actions_n)
@@ -205,9 +211,9 @@ def train(arglist):
             if done or terminal:
                 episode_no+=1
                 if episode_no%30==0:
-                    is_training=0
+                    is_training=train_indicator
                 obs_n, clients = env.reset_multi(clients,is_training,relaunch)
-                is_training=1
+                is_training=train_indicator
                 relaunch = True
                 episode_step = 0
                 episode_rewards.append(0)
@@ -229,7 +235,8 @@ def train(arglist):
                         pickle.dump(agent_info[:-1], fp)
                     break
                 continue
-
+            if done:
+            	print('sanity check',episode_rewards[-2])
             # for displaying learned policies
             if arglist.display:
                 time.sleep(0.1)
@@ -237,44 +244,46 @@ def train(arglist):
                 continue
 
             # update all trainers, if not in display or benchmark mode
-            loss = None
-            for agent in trainers:
-                agent.preupdate()
-            for agent in trainers:
-                loss = agent.update(trainers, train_step)
+            if train_indicator:
+	            loss = None
+	            for agent in trainers:
+	                agent.preupdate()
+	            for agent in trainers:
+	                loss = agent.update(trainers, train_step)
 
-            # save model, display training output
-            # change the save rate here
-            if done and (episode_no % 2 == 0):
-                U.save_state(fname=arglist.save_dir, saver=saver,time_step=episode_no)
-                # print statement depends on whether or not there are adversaries
-                if num_adversaries == 0:
-                    print("steps: {}, episodes: {}, mean episode reward: {}, time: {}".format(
-                        train_step, len(episode_rewards), np.mean(episode_rewards[-arglist.save_rate:]), round(time.time()-t_start, 3)))
-                else:
-                    print("steps: {}, episodes: {}, mean episode reward: {}, agent episode reward: {}, time: {}".format(
-                        train_step, len(episode_rewards), np.mean(episode_rewards[-arglist.save_rate:]),
-                        [np.mean(rew[-arglist.save_rate:]) for rew in agent_rewards], round(time.time()-t_start, 3)))
-                t_start = time.time()
-                # Keep track of final episode reward
-                final_ep_rewards.append(np.mean(episode_rewards[-arglist.save_rate:]))
-                #print('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaAAAAAAaAaAA')
-                for rew in agent_rewards:
-                    final_ep_ag_rewards.append(np.mean(rew[-arglist.save_rate:]))
-            #elif done:
-            #	print('episode_no',episode_no)
-            #	print('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBb')
+	            # save model, display training output
+	            # change the save rate here
+	            if done and (episode_rewards[-2]>best_reward):
+	                U.save_state(fname=arglist.save_dir, saver=saver,time_step=episode_no)
+	                # print statement depends on whether or not there are adversaries
+	                if num_adversaries == 0:
+	                    print("steps: {}, episodes: {}, mean episode reward: {}, time: {}".format(
+	                        train_step, len(episode_rewards), np.mean(episode_rewards[-arglist.save_rate:]), round(time.time()-t_start, 3)))
+	                else:
+	                    print("steps: {}, episodes: {}, mean episode reward: {}, agent episode reward: {}, time: {}".format(
+	                        train_step, len(episode_rewards), np.mean(episode_rewards[-arglist.save_rate:]),
+	                        [np.mean(rew[-arglist.save_rate:]) for rew in agent_rewards], round(time.time()-t_start, 3)))
+	                t_start = time.time()
+	                # Keep track of final episode reward
+	                final_ep_rewards.append(np.mean(episode_rewards[-arglist.save_rate:]))
+	                best_reward=episode_rewards[-1]
+	                #print('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaAAAAAAaAaAA')
+	                for rew in agent_rewards:
+	                    final_ep_ag_rewards.append(np.mean(rew[-arglist.save_rate:]))
+	            #elif done:
+	            #	print('episode_no',episode_no)
+	            #	print('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBb')
 
-            # saves final episode reward for plotting training curve later
-            if len(episode_rewards) > arglist.num_episodes:
-                rew_file_name = arglist.plots_dir + arglist.exp_name + '_rewards.pkl'
-                with open(rew_file_name, 'wb') as fp:
-                    pickle.dump(final_ep_rewards, fp)
-                agrew_file_name = arglist.plots_dir + arglist.exp_name + '_agrewards.pkl'
-                with open(agrew_file_name, 'wb') as fp:
-                    pickle.dump(final_ep_ag_rewards, fp)
-                print('...Finished total of {} episodes.'.format(len(episode_rewards)))
-                break
+	            # saves final episode reward for plotting training curve later
+	            if len(episode_rewards) > arglist.num_episodes:
+	                rew_file_name = arglist.plots_dir + arglist.exp_name + '_rewards.pkl'
+	                with open(rew_file_name, 'wb') as fp:
+	                    pickle.dump(final_ep_rewards, fp)
+	                agrew_file_name = arglist.plots_dir + arglist.exp_name + '_agrewards.pkl'
+	                with open(agrew_file_name, 'wb') as fp:
+	                    pickle.dump(final_ep_ag_rewards, fp)
+	                print('...Finished total of {} episodes.'.format(len(episode_rewards)))
+	                break
 
 if __name__ == '__main__':
     arglist = parse_args()

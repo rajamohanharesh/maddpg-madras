@@ -161,6 +161,7 @@ class MADDPGAgentTrainer(AgentTrainer):
     
     def noise_action(self, obs,epsilon):
         action = self.act(obs[None])[0]
+        print("Action before noise:", action)
         
         noise_t = np.zeros(action.shape[0])
         noise_t[0] = epsilon * self.OU.function(action[0],  0.0 , 0.60, 0.80)
@@ -176,7 +177,6 @@ class MADDPGAgentTrainer(AgentTrainer):
         action[1] = np.clip(action[1], 0 , 1)
         action[2] = np.clip(action[2], 0 , 1)
         
-        print("Action_Noise:", noise_t)
         return action
 
     def experience(self, obs, act, rew, new_obs, done, terminal):
@@ -187,11 +187,13 @@ class MADDPGAgentTrainer(AgentTrainer):
         self.replay_sample_index = None
 
     def update(self, agents, t):
-        if len(self.replay_buffer) < self.max_replay_buffer_len: # replay buffer is not large enough
+        # if len(self.replay_buffer) < self.max_replay_buffer_len: # replay buffer is not large enough
+        if len(self.replay_buffer) < 100: # replay buffer is not large enough
             return
         # if not t % 100 == 0:  # only update every 100 steps
         #     return
         print("Update timestep",t)
+        
         self.replay_sample_index = self.replay_buffer.make_index(self.args.batch_size)
         # collect replay sample from all agents
         obs_n = []

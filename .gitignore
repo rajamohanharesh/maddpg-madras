@@ -1,2 +1,2 @@
-experiments/policy/
-experiments/learning_curves
+experiments/policy/*
+experiments/learning_curves/*

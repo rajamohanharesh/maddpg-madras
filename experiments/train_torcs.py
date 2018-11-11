@@ -206,6 +206,7 @@ def train(arglist):
             U.load_state(arglist.load_dir,loader)
             for agent_0,agent_1 in zip(actor_var0_list,actor_var1_list):
                 agent_1 = agent_1.assign(agent_0)
+                agent_1.eval()
 
 
 

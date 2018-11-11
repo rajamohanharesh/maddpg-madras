@@ -113,7 +113,7 @@ class TorcsEnv:
     	for i in range(self.n):
             # print(step[i],clients[i],actions[i])                		          
             # worker_work = lambda: (self.step(step,clients[i],actions[i],early_stop))
-            t = threading.Thread(target = self.step, args = (step,clients[i],actions[i],early_stop))
+            t = threading.Thread(target = self.step, args = (step,clients[i],actions[i],early_stop,i,clients))
             worker_threads.append(t)
 
     	for thread in worker_threads:
@@ -131,7 +131,7 @@ class TorcsEnv:
 
     	return obs_n,rew_n,done_n,info_n
     
-    def step(self, step, client, u, early_stop):
+    def step(self, step, client, u, early_stop,index,clients):
         # client = self.client
         # lock = threading.RLock()
         # lock.acquire()
@@ -198,7 +198,12 @@ class TorcsEnv:
 
         # Get the current full-observation from torcs
         obs = client.S.d
-
+        # if index==0:
+        #     obs1=clients[1].S.d
+        #     sp1 = np.array(obs1['speedX'])
+        # else:
+        #     obs1=clients[0].S.d
+        #     sp1 = np.array(obs1['speedX'])
         # Make an obsevation from a raw observation vector from TORCS
         self.observation = self.make_observation(obs)
         self.currState = np.hstack((self.observation.angle, self.observation.track, self.observation.trackPos, 
@@ -237,28 +242,46 @@ class TorcsEnv:
         reward = progress
 
                 # collision detection
-        # if obs['damage'] - obs_pre['damage'] > 0:
-        #     reward = -300
-        #     #print('***collision***')
+        if obs['damage'] - obs_pre['damage'] > 0:
+            reward = -300
+            print('***collision***')
 
         # # Penalising if too near an opponent 
-
         if (dist_MM<8 and dist_MM>0) or (dist_LL<0.5 and dist_LL>0) or (dist_RR<0.5 and dist_RR>0) or \
             (dist_L<5 and dist_L>0) or (dist_R<5 and dist_R>0) or \
             (dist_L_rear<10 and dist_L_rear>0) or (dist_R_rear<10 and dist_R_rear>0):
             print('***Proximity***')
-            reward = -100 
+            reward = -300 
             if obs['damage'] - obs_pre['damage'] > 0:
-                reward = -100
+                reward = -400
                 self.n_collision = self.n_collision + 1
                 print('***collision***')
 
 
+        if index==0:
+            if sp*np.cos(obs['angle'])<sp1*np.cos(obs1['angle']):
+                reward=reward-50
+            elif (sp*np.cos(obs['angle'])-sp1*np.cos(obs1['angle']))>10:
+                reward=reward-50
 
-        # Termination judgement #########################
+            if np.abs(obs['trackPos']-obs1['trackPos'])>5:
+                reward-=50
+
+        if index==1:
+            if sp*np.cos(obs['angle'])>sp1*np.cos(obs1['angle']):
+                reward=reward-50
+            elif (sp1*np.cos(obs1['angle'])-sp*np.cos(obs['angle']))>10:
+                reward=reward-50
+            if np.abs(obs['trackPos']-obs1['trackPos'])>4:
+                reward-=50
+        
+        if sp*np.cos(obs['angle'])<7:
+            reward=reward-100
+                # Termination judgement #########################
         episode_terminate = False
+        """
         if ( (abs(track.any()) > 1 or abs(trackPos) > 1)):  # Episode is terminated if the car is out of track
-            reward = -400
+            reward = -2000
             episode_terminate = True
             client.R.d['meta'] = True
             info['termination_cause'] = 1
@@ -275,7 +298,7 @@ class TorcsEnv:
                 print('Terminating because Small Progress')
         """
         if np.cos(obs['angle']) < 0: # Episode is terminated if the agent runs backward
-            reward=-400
+            reward=-2000
             episode_terminate = True
             client.R.d['meta'] = True
             info['termination_cause'] = 3

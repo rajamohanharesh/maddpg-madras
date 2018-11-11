@@ -8,28 +8,57 @@ import maddpg.common.tf_util as U
 from maddpg.trainer.maddpg import MADDPGAgentTrainer
 import tensorflow.contrib.layers as layers
 import snakeoil3_gym as snakeoil3
+from tensorflow.python import pywrap_tensorflow
+
 train_indicator=0
+
+def get_tensors_in_checkpoint_file(file_name,all_tensors=True,tensor_name=None):
+    varlist=[]
+    var_value =[]
+    reader = pywrap_tensorflow.NewCheckpointReader(file_name)
+    if all_tensors:
+      var_to_shape_map = reader.get_variable_to_shape_map()
+      for key in sorted(var_to_shape_map):
+        varlist.append(key)
+        var_value.append(reader.get_tensor(key))
+    else:
+        varlist.append(tensor_name)
+        var_value.append(reader.get_tensor(tensor_name))
+    return (varlist, var_value)
+
+def build_tensors_in_checkpoint_file(loaded_tensors):
+    full_var_list = list()
+    # Loop all loaded tensors
+    for i, tensor_name in enumerate(loaded_tensors[0]):
+        # Extract tensor
+        try:
+            tensor_aux = tf.get_default_graph().get_tensor_by_name(tensor_name+":0")
+        except:
+            print('Not found: '+tensor_name)
+        full_var_list.append(tensor_aux)
+    return full_var_list
+
 def parse_args():
     parser = argparse.ArgumentParser("Reinforcement Learning experiments for multiagent environments")
     # Environment
     parser.add_argument("--port", type=int, default=3001, help="Port to be used for first car")
     parser.add_argument("--scenario", type=str, default="simple", help="name of the scenario script")
-    parser.add_argument("--max-episode-len", type=int, default=1400, help="maximum episode length")
-    parser.add_argument("--num-episodes", type=int, default=600, help="number of episodes")
+    parser.add_argument("--max-episode-len", type=int, default=1200, help="maximum episode length")
+    parser.add_argument("--num-episodes", type=int, default=200, help="number of episodes")
     parser.add_argument("--num-adversaries", type=int, default=0, help="number of adversaries")
     parser.add_argument("--good-policy", type=str, default="maddpg", help="policy for good agents")
     parser.add_argument("--adv-policy", type=str, default="maddpg", help="policy of adversaries")
     parser.add_argument("--early-stop", type=int, default= 0 , help="early stop value")
     # Core training parameters
-    parser.add_argument("--lr", type=float, default=1e-3, help="learning rate for Adam optimizer")
+    parser.add_argument("--lr", type=float, default=1e-4, help="learning rate for Adam optimizer")
     parser.add_argument("--gamma", type=float, default=0.99, help="discount factor")
     parser.add_argument("--batch-size", type=int, default=32, help="number of episodes to optimize at the same time")
     parser.add_argument("--num-units", type=int, default=350, help="number of units in the mlp")
     # Checkpointing
-    parser.add_argument("--exp-name", type=str, default=None, help="name of the experiment")
-    parser.add_argument("--save-dir", type=str, default="policy/", help="directory in which training state and model should be saved")
-    parser.add_argument("--save-rate", type=int, default=2, help="save model once every time this many episodes are completed")
-    parser.add_argument("--load-dir", type=str, default="policy/", help="directory in which training state and model are loaded")
+    parser.add_argument("--exp-name", type=str, default="multiple cars", help="name of the experiment")
+    parser.add_argument("--save-dir", type=str, default="./policy/", help="directory in which training state and model should be saved")
+    parser.add_argument("--save-rate", type=int, default=30, help="save model once every time this many episodes are completed")
+    parser.add_argument("--load-dir", type=str, default="./policy/", help="directory in which training state and model are loaded")
     # Evaluation
     parser.add_argument("--restore", action="store_true", default=True)
     parser.add_argument("--display", action="store_true", default=False)
@@ -80,7 +109,7 @@ def mlp_actor_model(input, scope, reuse=False, num_units=350, rnn_cell=None):
         
         # action_output = tf.concat(1, [steer, accel, brake])
         action_output = tf.concat([steer, accel, brake], 1)
-        print("W,b",W_brake,b_brake)
+        # print("W,b",W_brake,b_brake)
         # out = layers.fully_connected(out, num_outputs=num_outputs, activation_fn=None)
         return action_output
 
@@ -129,7 +158,6 @@ def train(arglist):
             obs_n.append(s)
             # print(ob)
 
-
         # Create agent trainers
         obs_shape_n = [env.observation_space[i].shape for i in range(env.n)]
         num_adversaries = min(env.n, arglist.num_adversaries)
@@ -138,20 +166,54 @@ def train(arglist):
 
         # Initialize
         U.initialize()
+        if arglist.display or arglist.restore or arglist.benchmark:
+            checkpoint = tf.train.get_checkpoint_state(arglist.load_dir)
+            if checkpoint and checkpoint.model_checkpoint_path:
+                print("Successfully loaded:", checkpoint.model_checkpoint_path)
+            else:
+                print("Could not find old network weights")
 
+            restored_vars  = get_tensors_in_checkpoint_file(file_name=checkpoint.model_checkpoint_path)
+            tensors_to_load = build_tensors_in_checkpoint_file(restored_vars)
+            loader = tf.train.Saver(tensors_to_load)
+            
+        all_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+        
+        actor_var_list = []
+        actor_var0_list = []
+        actor_var1_list = []
+        for var in all_vars:
+            if 'p_func' in var.name:
+                if 'agent_0' in var.name:
+                    actor_var0_list.append(var)
+
+                if 'agent_1' in var.name:
+                    actor_var1_list.append(var)
+
+                actor_var_list.append(var)
+        
+        
+
+
+        # print("All Actor vars",actor_var_list)
         # Load previous results, if necessary
+        saver = tf.train.Saver(var_list=actor_var_list)
+
         if arglist.load_dir == "":
             arglist.load_dir = arglist.save_dir
         if arglist.display or arglist.restore or arglist.benchmark:
             print('Loading previous state...')
-            U.load_state(arglist.load_dir)
+            U.load_state(arglist.load_dir,loader)
+            for agent_0,agent_1 in zip(actor_var0_list,actor_var1_list):
+                agent_1 = agent_1.assign(agent_0)
+
+
 
         episode_rewards = [0.0]  # sum of rewards for all agents
         agent_rewards = [[0.0] for _ in range(env.n)]  # individual agent reward
         final_ep_rewards = []  # sum of rewards for training curve
         final_ep_ag_rewards = []  # agent rewards for training curve
         agent_info = [[[]]]  # placeholder for benchmarking info
-        saver = tf.train.Saver()
         print('--------------------------------------DEBUG 1 --------------------------------------')
         # obs_n,clients = env.reset_multi(clients,False)
         episode_step = 0
@@ -160,8 +222,8 @@ def train(arglist):
         is_training = train_indicator
         print('Starting iterations...')
         episode_no=0
-        best_reward=-10000000
-        epsilon = 0.5
+        best_reward=-100000
+        epsilon = 0.7
         epsilon_decay = 600000.0
         epsilon_steady_state = 0.01
 
@@ -177,12 +239,10 @@ def train(arglist):
             #     actions_n.append(action)
             # default_action = np.array([0.,0.8,0.1])
             if train_indicator:
-            	actions_n = [agent.noise_action(obs,epsilon) for agent, obs in zip(trainers,obs_n)] 
+                actions_n = [agent.noise_action(obs,epsilon) for agent, obs in zip(trainers,obs_n)] 
             else:
-            	actions_n = [agent.action(obs) for agent, obs in zip(trainers,obs_n)]             	
-            #if episode_step<100:
-            #	actions_n[1]=np.array([0,0,0])
-            # actions_n = [default_action for obs in obs_n]
+                actions_n = [agent.action(obs) for agent, obs in zip(trainers,obs_n)]
+            	
             if train_indicator:
 	            epsilon-=1/epsilon_decay
 
@@ -211,6 +271,7 @@ def train(arglist):
             if done or terminal:
                 episode_no+=1
                 if episode_no%30==0:
+                    is_training=1
                     is_training=train_indicator
                 obs_n, clients = env.reset_multi(clients,is_training,relaunch)
                 is_training=train_indicator
@@ -235,55 +296,50 @@ def train(arglist):
                         pickle.dump(agent_info[:-1], fp)
                     break
                 continue
-            if done:
-            	print('sanity check',episode_rewards[-2])
+            
             # for displaying learned policies
             if arglist.display:
                 time.sleep(0.1)
                 env.render()
                 continue
-
-            # update all trainers, if not in display or benchmark mode
             if train_indicator:
-	            loss = None
-	            for agent in trainers:
-	                agent.preupdate()
-	            for agent in trainers:
-	                loss = agent.update(trainers, train_step)
+                # update all trainers, if not in display or benchmark mode
+                loss = None
+                for agent in trainers:
+                    agent.preupdate()
+                for agent in trainers:
+                    loss = agent.update(trainers, train_step)
 
-	            # save model, display training output
-	            # change the save rate here
-	            if done and (episode_rewards[-2]>best_reward):
-	                U.save_state(fname=arglist.save_dir, saver=saver,time_step=episode_no)
-	                # print statement depends on whether or not there are adversaries
-	                if num_adversaries == 0:
-	                    print("steps: {}, episodes: {}, mean episode reward: {}, time: {}".format(
-	                        train_step, len(episode_rewards), np.mean(episode_rewards[-arglist.save_rate:]), round(time.time()-t_start, 3)))
-	                else:
-	                    print("steps: {}, episodes: {}, mean episode reward: {}, agent episode reward: {}, time: {}".format(
-	                        train_step, len(episode_rewards), np.mean(episode_rewards[-arglist.save_rate:]),
-	                        [np.mean(rew[-arglist.save_rate:]) for rew in agent_rewards], round(time.time()-t_start, 3)))
-	                t_start = time.time()
-	                # Keep track of final episode reward
-	                final_ep_rewards.append(np.mean(episode_rewards[-arglist.save_rate:]))
-	                best_reward=episode_rewards[-2]
-	                #print('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaAAAAAAaAaAA')
-	                for rew in agent_rewards:
-	                    final_ep_ag_rewards.append(np.mean(rew[-arglist.save_rate:]))
-	            #elif done:
-	            #	print('episode_no',episode_no)
-	            #	print('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBb')
+                # save model, display training output
+                if (terminal or done) and (episode_rewards[-2]>best_reward):
+                    U.save_state(arglist.save_dir, saver=saver, time_step=episode_no)
+                    # print statement depends on whether or not there are adversaries
+                    if num_adversaries == 0:
+                        print("steps: {}, episodes: {}, mean episode reward: {}, time: {}".format(
+                            train_step, len(episode_rewards), np.mean(episode_rewards[-arglist.save_rate:]), round(time.time()-t_start, 3)))
+                    else:
+                        print("steps: {}, episodes: {}, mean episode reward: {}, agent episode reward: {}, time: {}".format(
+                            train_step, len(episode_rewards), np.mean(episode_rewards[-arglist.save_rate:]),
+                            [np.mean(rew[-arglist.save_rate:]) for rew in agent_rewards], round(time.time()-t_start, 3)))
+                    t_start = time.time()
+                    # Keep track of final episode reward
+                    final_ep_rewards.append(np.mean(episode_rewards[-arglist.save_rate:]))
+                    for rew in agent_rewards:
+                        final_ep_ag_rewards.append(np.mean(rew[-arglist.save_rate:]))
+                    best_reward=episode_rewards[-2]
 
-	            # saves final episode reward for plotting training curve later
-	            if len(episode_rewards) > arglist.num_episodes:
-	                rew_file_name = arglist.plots_dir + arglist.exp_name + '_rewards.pkl'
-	                with open(rew_file_name, 'wb') as fp:
-	                    pickle.dump(final_ep_rewards, fp)
-	                agrew_file_name = arglist.plots_dir + arglist.exp_name + '_agrewards.pkl'
-	                with open(agrew_file_name, 'wb') as fp:
-	                    pickle.dump(final_ep_ag_rewards, fp)
-	                print('...Finished total of {} episodes.'.format(len(episode_rewards)))
-	                break
+                # saves final episode reward for plotting training curve later
+                if len(episode_rewards) > arglist.num_episodes:
+                    rew_file_name = arglist.plots_dir + arglist.exp_name + '_rewards.pkl'
+                    with open(rew_file_name, 'wb') as fp:
+                        pickle.dump(final_ep_rewards, fp)
+                    agrew_file_name = arglist.plots_dir + arglist.exp_name + '_agrewards.pkl'
+                    with open(agrew_file_name, 'wb') as fp:
+                        pickle.dump(final_ep_ag_rewards, fp)
+                    print('...Finished total of {} episodes.'.format(len(episode_rewards)))
+                    break
+
+            
 
 if __name__ == '__main__':
     arglist = parse_args()

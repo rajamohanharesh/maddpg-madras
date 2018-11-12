@@ -44,7 +44,7 @@ def parse_args():
     parser.add_argument("--port", type=int, default=3001, help="Port to be used for first car")
     parser.add_argument("--scenario", type=str, default="simple", help="name of the scenario script")
     parser.add_argument("--max-episode-len", type=int, default=1200, help="maximum episode length")
-    parser.add_argument("--num-episodes", type=int, default=200, help="number of episodes")
+    parser.add_argument("--num-episodes", type=int, default= 200, help="number of episodes")
     parser.add_argument("--num-adversaries", type=int, default=0, help="number of adversaries")
     parser.add_argument("--good-policy", type=str, default="maddpg", help="policy for good agents")
     parser.add_argument("--adv-policy", type=str, default="maddpg", help="policy of adversaries")
@@ -55,8 +55,8 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=32, help="number of episodes to optimize at the same time")
     parser.add_argument("--num-units", type=int, default=350, help="number of units in the mlp")
     # Checkpointing
-    parser.add_argument("--exp-name", type=str, default="multiple cars", help="name of the experiment")
-    parser.add_argument("--save-dir", type=str, default="./policy/", help="directory in which training state and model should be saved")
+    parser.add_argument("--exp-name", type=str, default="single_agent", help="name of the experiment")
+    parser.add_argument("--save-dir", type=str, default="./policy/single_agent/", help="directory in which training state and model should be saved")
     parser.add_argument("--save-rate", type=int, default=30, help="save model once every time this many episodes are completed")
     parser.add_argument("--load-dir", type=str, default="./policy/", help="directory in which training state and model are loaded")
     # Evaluation
@@ -116,7 +116,7 @@ def mlp_actor_model(input, scope, reuse=False, num_units=350, rnn_cell=None):
 def make_env(scenario_name, arglist, benchmark=False):
     from gym_torcs import TorcsEnv
 
-    env = TorcsEnv(vision=False, throttle=True, gear_change=False,num_agents =2)
+    env = TorcsEnv(vision=False, throttle=True, gear_change=False,num_agents =1)
     return env
 
 def get_trainers(env, num_adversaries, obs_shape_n, arglist):
@@ -184,11 +184,11 @@ def train(arglist):
         actor_var1_list = []
         for var in all_vars:
             if 'p_func' in var.name:
-                if 'agent_0' in var.name:
-                    actor_var0_list.append(var)
+                # if 'agent_0' in var.name:
+                #     actor_var0_list.append(var)
 
-                if 'agent_1' in var.name:
-                    actor_var1_list.append(var)
+                # if 'agent_1' in var.name:
+                #     actor_var1_list.append(var)
 
                 actor_var_list.append(var)
         
@@ -204,9 +204,9 @@ def train(arglist):
         if arglist.display or arglist.restore or arglist.benchmark:
             print('Loading previous state...')
             U.load_state(arglist.load_dir,loader)
-            for agent_0,agent_1 in zip(actor_var0_list,actor_var1_list):
-                agent_1 = agent_1.assign(agent_0)
-                agent_1.eval()
+            # for agent_0,agent_1 in zip(actor_var0_list,actor_var1_list):
+            #     agent_1 = agent_1.assign(agent_0)
+            #     agent_1.eval()
 
 
 
@@ -338,6 +338,7 @@ def train(arglist):
                     with open(agrew_file_name, 'wb') as fp:
                         pickle.dump(final_ep_ag_rewards, fp)
                     print('...Finished total of {} episodes.'.format(len(episode_rewards)))
+                    env.end()
                     break
 
             

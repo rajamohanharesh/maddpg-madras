@@ -258,45 +258,45 @@ class TorcsEnv:
                 print('***collision***')
 
 
-        if index==0:
-            if sp*np.cos(obs['angle'])<sp1*np.cos(obs1['angle']):
-                reward=reward-50
-            elif (sp*np.cos(obs['angle'])-sp1*np.cos(obs1['angle']))>10:
-                reward=reward-50
+        # if index==0:
+        #     if sp*np.cos(obs['angle'])<sp1*np.cos(obs1['angle']):
+        #         reward=reward-50
+        #     elif (sp*np.cos(obs['angle'])-sp1*np.cos(obs1['angle']))>10:
+        #         reward=reward-50
 
-            if np.abs(obs['trackPos']-obs1['trackPos'])>5:
-                reward-=50
+        #     if np.abs(obs['trackPos']-obs1['trackPos'])>5:
+        #         reward-=50
 
-        if index==1:
-            if sp*np.cos(obs['angle'])>sp1*np.cos(obs1['angle']):
-                reward=reward-50
-            elif (sp1*np.cos(obs1['angle'])-sp*np.cos(obs['angle']))>10:
-                reward=reward-50
-            if np.abs(obs['trackPos']-obs1['trackPos'])>4:
-                reward-=50
+        # if index==1:
+        #     if sp*np.cos(obs['angle'])>sp1*np.cos(obs1['angle']):
+        #         reward=reward-50
+        #     elif (sp1*np.cos(obs1['angle'])-sp*np.cos(obs['angle']))>10:
+        #         reward=reward-50
+        #     if np.abs(obs['trackPos']-obs1['trackPos'])>4:
+        #         reward-=50
         
-        if sp*np.cos(obs['angle'])<7:
-            reward=reward-100
+        # if sp*np.cos(obs['angle'])<7:
+        #     reward=reward-100
                 # Termination judgement #########################
         episode_terminate = False
-        """
+        # """
         if ( (abs(track.any()) > 1 or abs(trackPos) > 1)):  # Episode is terminated if the car is out of track
             reward = -2000
             episode_terminate = True
             client.R.d['meta'] = True
             info['termination_cause'] = 1
             print('Terminating because Out of Track')
-        """
-        temp_t_step=self.time_step-200
-        if self.terminal_judge_start < temp_t_step: # Episode terminates if the progress of agent is small
-            if ( (progress < self.termination_limit_progress) and early_stop ):
-                print("No progress")
-                episode_terminate = True
-                client.R.d['meta'] = True
-                info['termination_cause'] = 2
+        # """
+        # temp_t_step=self.time_step-200
+        # if self.terminal_judge_start < temp_t_step: # Episode terminates if the progress of agent is small
+        #     if ( (progress < self.termination_limit_progress) and early_stop ):
+        #         print("No progress")
+        #         episode_terminate = True
+        #         client.R.d['meta'] = True
+        #         info['termination_cause'] = 2
 
-                print('Terminating because Small Progress')
-        """
+        #         print('Terminating because Small Progress')
+        # """
         if np.cos(obs['angle']) < 0: # Episode is terminated if the agent runs backward
             reward=-2000
             episode_terminate = True
